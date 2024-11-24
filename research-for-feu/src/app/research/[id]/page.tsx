@@ -2,84 +2,83 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import Papa from 'papaparse'
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Users, ClipboardList, Calendar, DollarSign } from 'lucide-react'
+import { ArrowLeft, Calendar, MapPin, Clock, Users, Gift, BookOpen } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
-interface Study {
-  id: string
-  name: string
-  requirements: string
-  activeParticipants: string
-  requiredParticipants: string
-  reward: string
+interface Schedule {
+  Schedule_ID: number
+  research_ID: number
+  criteria: string
+  date: string
+  time: string
+  location: string
+  Incentives: string
+  Registration_Link: string
+  course_code: string
+  research_name: string
 }
 
 export default function ResearchDetails() {
-  const [study, setStudy] = useState<Study | null>(null)
+  const [schedule, setSchedule] = useState<Schedule | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const { id } = useParams()
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchSchedule = async () => {
       try {
-        const response = await fetch('https://hebbkx1anhila5yf.public.blob.vercel-storage.com/data-kk626MKqbOIDHGD6pvnw91vuhcyuWP.csv')
-        const csvText = await response.text()
-        
-        Papa.parse(csvText, {
-          header: true,
-          complete: (results) => {
-            const studies = results.data as Study[]
-            const foundStudy = studies.find(s => s.id === id)
-            if (foundStudy) {
-              setStudy(foundStudy)
-            } else {
-              setError('Study not found')
-            }
-            setIsLoading(false)
-          },
-          error: (error:any) => {
-            setError('Failed to parse CSV data')
-            setIsLoading(false)
-          }
+        const { data, error } = await supabase
+          .from('Schedule')
+          .select(`
+            *,
+            Research (research_name)
+          `)
+          .eq('Schedule_ID', id)
+          .single()
+
+        if (error) throw error
+
+        setSchedule({
+          ...data,
+          research_name: data.Research.research_name
         })
+        setIsLoading(false)
       } catch (error) {
-        setError('Failed to fetch data')
+        setError('Failed to fetch schedule')
         setIsLoading(false)
       }
     }
 
-    fetchData()
+    fetchSchedule()
   }, [id])
 
   if (isLoading) {
     return <div className="container mx-auto px-4 py-8">Loading...</div>
   }
 
-  if (error || !study) {
-    return <div className="container mx-auto px-4 py-8">Error: {error || 'Study not found'}</div>
+  if (error || !schedule) {
+    return <div className="container mx-auto px-4 py-8">Error: {error || 'Schedule not found'}</div>
   }
 
   return (
     <div className="container mx-auto px-4 py-8">
       <Button variant="outline" className="mb-6" onClick={() => router.back()}>
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Studies
+        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Schedules
       </Button>
       
       <Card className="w-full max-w-3xl mx-auto">
         <CardHeader>
           <div className="flex justify-between items-start">
             <div>
-              <CardTitle className="text-2xl mb-2">{study.name}</CardTitle>
-              <CardDescription>{study.requirements}</CardDescription>
+              <CardTitle className="text-2xl mb-2">{schedule.research_name}</CardTitle>
+              <CardDescription>Schedule ID: {schedule.Schedule_ID}</CardDescription>
             </div>
             <Badge variant="secondary" className="text-lg">
-              <Users className="mr-1 h-4 w-4" />
-              {study.activeParticipants} / {study.requiredParticipants} participants
+              Course Code: {schedule.course_code}
             </Badge>
           </div>
         </CardHeader>
@@ -87,27 +86,47 @@ export default function ResearchDetails() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <h3 className="font-semibold mb-1 flex items-center">
-                <ClipboardList className="mr-2 h-4 w-4" /> Requirements
+                <Calendar className="mr-2 h-4 w-4" /> Date
               </h3>
-              <p>{study.requirements}</p>
+              <p>{schedule.date}</p>
             </div>
             <div>
               <h3 className="font-semibold mb-1 flex items-center">
-                <DollarSign className="mr-2 h-4 w-4" /> Reward
+                <Clock className="mr-2 h-4 w-4" /> Time
               </h3>
-              <p>{study.reward}</p>
+              <p>{schedule.time}</p>
+            </div>
+            <div>
+              <h3 className="font-semibold mb-1 flex items-center">
+                <MapPin className="mr-2 h-4 w-4" /> Location
+              </h3>
+              <p>{schedule.location}</p>
+            </div>
+            <div>
+              <h3 className="font-semibold mb-1 flex items-center">
+                <Gift className="mr-2 h-4 w-4" /> Incentives
+              </h3>
+              <p>{schedule.Incentives}</p>
             </div>
           </div>
           <div>
             <h3 className="font-semibold mb-1 flex items-center">
-              <Calendar className="mr-2 h-4 w-4" /> Participation Status
+              <Users className="mr-2 h-4 w-4" /> Criteria
             </h3>
-            <p>{study.activeParticipants} out of {study.requiredParticipants} required participants</p>
+            <p>{schedule.criteria}</p>
+          </div>
+          <div>
+            <h3 className="font-semibold mb-1 flex items-center">
+              <BookOpen className="mr-2 h-4 w-4" /> Research ID
+            </h3>
+            <p>{schedule.research_ID}</p>
           </div>
         </CardContent>
         <CardFooter className="flex justify-end">
-          <Button onClick={() => router.push(`/register/${study.id}`)}>
-            Register for Study
+          <Button asChild>
+            <a href={schedule.Registration_Link} target="_blank" rel="noopener noreferrer">
+              Register for Study
+            </a>
           </Button>
         </CardFooter>
       </Card>
