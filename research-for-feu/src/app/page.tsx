@@ -6,10 +6,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Link from 'next/link'
+import Image from 'next/image'
 import nlp from 'compromise'
 import { supabase } from '@/lib/supabase'
-import Image from 'next/image'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
+
+
+interface FormStatus {
+  url: string
+  status: string
+}
+
+interface HomeProps {
+  formStatuses: FormStatus[]
+}
 
 interface Schedule {
   Schedule_ID: number
@@ -21,7 +32,9 @@ interface Schedule {
   Incentives: string
   Registration_Link: string
   course_code: string
-  research_name: string
+  Research: {
+    research_name: string
+  }
 }
 
 export default function ResearchDashboard() {
@@ -29,75 +42,70 @@ export default function ResearchDashboard() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
   const router = useRouter()
+  const itemsPerPage = 10
+
 
   useEffect(() => {
-    const fetchSchedules = async () => {
+    async function fetchData() {
       try {
-        console.log('Fetching schedules...')
         const { data, error } = await supabase
           .from('Schedule')
           .select(`
             *,
             Research (research_name)
           `)
-          console.log('Fetched data:', data)
-        if (error) {
-          console.error('Supabase error:', error)
-          throw error
-        }
+          .eq('isAccessible', true)
+          .or('Deadline.is.null,Deadline.gte.now()')
 
-        console.log('Fetched data:', data)
-
-        if (!data || data.length === 0) {
-          console.log('No data returned from Supabase')
-          setError('No schedules found')
-          setIsLoading(false)
-          return
-        }
-
-        const schedulesWithResearchName = data.map(schedule => ({
-          ...schedule,
-          research_name: schedule.Research?.research_name || 'Unknown Research'
-        }))
-
-        console.log('Processed schedules:', schedulesWithResearchName)
-
-        setSchedules(schedulesWithResearchName)
+        if (error) throw error
+        setSchedules(data || [])
         setIsLoading(false)
-      } catch (error) {
-        console.error('Error in fetchSchedules:', error)
-        setError('Failed to fetch data')
+      } catch (error: any) {
+        console.error('Error fetching data:', error)
+        setError(error.message)
         setIsLoading(false)
       }
     }
 
-    fetchSchedules()
+    fetchData()
   }, [])
-
-  const handleRowClick = (id: number) => {
-    router.push(`/research/${id}`)
-  }
-
-  const lemmatize = (text: string) => {
-    return nlp(text).normalize().out('text')
-  }
 
   const filteredSchedules = useMemo(() => {
     if (!searchTerm) return schedules
+
+    const lemmatize = (text: string) => {
+      return nlp(text).normalize().out('text')
+    }
 
     const lemmatizedSearchTerm = lemmatize(searchTerm.toLowerCase())
 
     return schedules.filter(schedule => {
       const lemmatizedCriteria = lemmatize(schedule.criteria.toLowerCase())
       const lemmatizedLocation = lemmatize(schedule.location.toLowerCase())
-      const lemmatizedResearchName = lemmatize(schedule.research_name.toLowerCase())
+      const lemmatizedResearchName = lemmatize(schedule.Research.research_name.toLowerCase())
 
       return lemmatizedCriteria.includes(lemmatizedSearchTerm) ||
              lemmatizedLocation.includes(lemmatizedSearchTerm) ||
              lemmatizedResearchName.includes(lemmatizedSearchTerm)
     })
   }, [schedules, searchTerm])
+
+  const paginatedSchedules = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage
+    return filteredSchedules.slice(startIndex, startIndex + itemsPerPage)
+  }, [filteredSchedules, currentPage])
+
+  const totalPages = Math.ceil(filteredSchedules.length / itemsPerPage)
+
+  const goToNextPage = () => {
+    setCurrentPage(page => Math.min(page + 1, totalPages))
+  }
+
+  const goToPreviousPage = () => {
+    setCurrentPage(page => Math.max(page - 1, 1))
+  }
 
   if (isLoading) {
     return <div className="container mx-auto px-4 py-8">Loading...</div>
@@ -107,8 +115,6 @@ export default function ResearchDashboard() {
     return <div className="container mx-auto px-4 py-8">Error: {error}</div>
   }
 
-
-
   return (
     <div className="min-h-screen flex flex-col bg-[#0A1E3D]">
       {/* Header */}
@@ -116,8 +122,8 @@ export default function ResearchDashboard() {
         <Image
           src="/images/psych-soc-header.jpg"
           alt="FEU Psychology Society Header"
-          width={1500}
-          height={100}
+          width={1920}
+          height={200}
           className="w-full h-auto"
           priority
         />
@@ -135,53 +141,63 @@ export default function ResearchDashboard() {
             placeholder="Search schedules..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm"
+            className="w-full max-w-sm"
             aria-label="Search schedules"
           />
         </div>
-        {filteredSchedules.length === 0 ? (
+        {paginatedSchedules.length === 0 ? (
           <p>No schedules found.</p>
         ) : (
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="min-w-full">
               <TableHeader>
-                <TableRow>
-                  <TableHead>Research Title</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Incentives</TableHead>
-                  <TableHead className="text-right">Register</TableHead>
-                </TableRow>
+              <TableRow>
+                <TableHead className="text-left">Research Title</TableHead>
+                <TableHead className="text-left" style={{ minWidth: '150px' }}>Date</TableHead>
+                <TableHead className="text-left">Criteria</TableHead>
+              </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredSchedules.map((schedule) => (
-                  <TableRow 
-                    key={schedule.Schedule_ID} 
-                    onClick={() => router.push(`/research/${schedule.Schedule_ID}`)}
-                    className="cursor-pointer hover:bg-gray-100"
-                  >
-                    <TableCell className="font-medium">{schedule.research_name}</TableCell>
-                    <TableCell>{schedule.date}</TableCell>
-                    <TableCell>{schedule.location}</TableCell>
-                    <TableCell>{schedule.Incentives}</TableCell>
-                    <TableCell className="text-right">
-                      <Button 
-                        asChild
-                        size="sm"
-                        onClick={(e) => e.stopPropagation()} // Prevent row click when clicking the button
-                      >
-                        <Link href={schedule.Registration_Link}>Register</Link>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+              {paginatedSchedules.map((schedule) => (
+                <TableRow 
+                key={schedule.Schedule_ID} 
+                onClick={() => router.push(`/research/${schedule.Schedule_ID}`)}
+                className="cursor-pointer hover:bg-gray-50"
+                >
+                <TableCell>{schedule.Research.research_name}</TableCell>
+                <TableCell>{schedule.date}</TableCell>
+                <TableCell>{schedule.criteria}</TableCell>
+                </TableRow>
+              ))}
               </TableBody>
             </Table>
           </div>
         )}
-        <p className="text-sm text-gray-500 mt-4">
-          Showing {filteredSchedules.length} out of {schedules.length} schedules
-        </p>
+        <div className="mt-4 flex justify-between items-center">
+          <p className="text-sm text-gray-500">
+            Showing {paginatedSchedules.length} out of {filteredSchedules.length} schedules
+          </p>
+          <div className="flex space-x-2">
+            <Button
+              onClick={goToPreviousPage}
+              disabled={currentPage === 1}
+              variant="outline"
+              size="sm"
+            >
+              <ChevronLeft className="h-4 w-4 mr-2" />
+              Previous
+            </Button>
+            <Button
+              onClick={goToNextPage}
+              disabled={currentPage === totalPages}
+              variant="outline"
+              size="sm"
+            >
+              Next
+              <ChevronRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </div>
       </main>
 
       {/* Footer */}
@@ -196,5 +212,4 @@ export default function ResearchDashboard() {
       </footer>
     </div>
   )
-
 }
